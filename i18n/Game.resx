@@ -211,4 +211,28 @@
   <data name="I18N_Yellow" xml:space="preserve">
     <value>Yellow</value>
   </data>
+  <data name="I18N_OnsenTicket" xml:space="preserve">
+    <value>Onsen Ticket</value>
+  </data>
+  <data name="I18N_SuperiorRecovery" xml:space="preserve">
+    <value>Superior Recovery</value>
+  </data>
+  <data name="I18N_CanSuperiorRecovery" xml:space="preserve">
+    <value>Can Superior Recovery</value>
+  </data>
+  <data name="I18N_CannotSuperiorRecovery" xml:space="preserve">
+    <value>Cannot Superior Recovery</value>
+  </data>
+  <data name="I18N_OnsenDigging" xml:space="preserve">
+    <value>Onsen</value>
+  </data>
+  <data name="I18N_OnsenCompleted" xml:space="preserve">
+    <value>Completed</value>
+  </data>
+  <data name="I18N_OnsenLayer" xml:space="preserve">
+    <value>Layer</value>
+  </data>
+  <data name="I18N_DigAmount" xml:space="preserve">
+    <value>Dig</value>
+  </data>
 </root>

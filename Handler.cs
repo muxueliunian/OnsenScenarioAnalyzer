@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UmamusumeResponseAnalyzer.Game;
 using UmamusumeResponseAnalyzer.Game.TurnInfo;
 using UmamusumeResponseAnalyzer.LocalizedLayout.Handlers;
 using static OnsenScenarioAnalyzer.i18n.Game;
@@ -15,6 +16,173 @@ namespace OnsenScenarioAnalyzer
 {
     public static class Handler
     {
+        // 理事长和记者的 Position ID
+        private const int DIRECTOR_POSITION = 102;  // 理事长
+        private const int REPORTER_POSITION = 103;  // 记者
+
+        // Link 角色和卡片的映射关系
+        // 东海帝王 - 砂质地层 +10%
+        private static readonly int[] TOKAI_TEIO_IDS = [1003, 10003, 20047, 30003, 30058, 30111, 30140, 30213, 30275];
+        // 创升 - 土质地层 +10%
+        private static readonly int[] CHUANG_SHENG_IDS = [1080, 10125, 30249];
+        // 美浦波旁 - 土质地层 +10%
+        private static readonly int[] MEJIRO_BOURBON_IDS = [1026, 30277, 10032, 20009, 30059, 30066, 30121, 30141];
+        // 奇锐骏 - 岩石地层 +10%
+        private static readonly int[] KITASAN_BLACK_IDS = [1100, 10093, 30156, 30212];
+
+        // 累计消耗体力统计
+        private static int _lastVital = 0;  // 上一回合的体力值
+        private static int _totalVitalConsumed = 0;  // 累计消耗体力
+
+        /// <summary>
+        /// 获取当前正在挖掘的温泉信息
+        /// </summary>
+        private static (int remainingLayers, int totalLayers, int currentRestVolume) GetCurrentOnsenDigInfo(SingleModeOnsenDataSet dataset)
+        {
+            if (dataset?.onsen_info_array == null)
+                return (0, 0, 0);
+
+            // 找到正在挖掘的温泉 (state == 2)
+            var currentOnsen = dataset.onsen_info_array.FirstOrDefault(x => x.state == 2);
+            if (currentOnsen == null || currentOnsen.stratum_info_array == null)
+                return (0, 0, 0);
+
+            // 计算总剩余挖掘量
+            var totalRestVolume = currentOnsen.stratum_info_array.Sum(x => x.rest_volume);
+
+            // 计算剩余层数（rest_volume > 0 的层数）
+            var remainingLayers = currentOnsen.stratum_info_array.Count(x => x.rest_volume > 0);
+
+            // 总层数
+            var totalLayers = currentOnsen.stratum_info_array.Length;
+
+            return (remainingLayers, totalLayers, totalRestVolume);
+        }
+
+        /// <summary>
+        /// 计算训练的支援卡人头数（排除理事长和记者）
+        /// </summary>
+        private static int GetSupportCardCount(CommandInfo command)
+        {
+            return command.TrainingPartners.Count(x =>
+                !x.IsNpc ||  // 支援卡（Position 1-6）
+                (x.Position != DIRECTOR_POSITION && x.Position != REPORTER_POSITION)  // NPC 但不是理事长和记者
+            );
+        }
+
+        /// <summary>
+        /// 检测玩家是否携带指定的 剧本连接/link 角色或卡片
+        /// </summary>
+        private static bool HasLinkCharacterOrCard(TurnInfo turn, int[] linkIds)
+        {
+            // 检查角色 ID
+            if (linkIds.Contains(turn.CharacterId))
+                return true;
+
+            // 检查支援卡 ID
+            foreach (var supportCard in turn.SupportCards.Values)
+            {
+                if (linkIds.Contains(supportCard))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 获取 link 加成（根据地层类型）
+        /// </summary>
+        private static int GetLinkBonus(TurnInfo turn, int stratumType)
+        {
+            return stratumType switch
+            {
+                1 => HasLinkCharacterOrCard(turn, TOKAI_TEIO_IDS) ? 10 : 0,  // 砂质 - 东海帝王
+                2 => (HasLinkCharacterOrCard(turn, CHUANG_SHENG_IDS) || HasLinkCharacterOrCard(turn, MEJIRO_BOURBON_IDS)) ? 10 : 0,  // 土质 - 创升或美浦波旁
+                3 => HasLinkCharacterOrCard(turn, KITASAN_BLACK_IDS) ? 10 : 0,  // 岩石 - 奇锐骏
+                _ => 0
+            };
+        }
+
+        /// <summary>
+        /// 获取当前温泉的挖掘力加成（包含 link 加成）
+        /// </summary>
+        private static int GetDigPower(SingleModeOnsenDataSet dataset, int stratumId, TurnInfo turn)
+        {
+            if (dataset?.dig_effect_info_array == null)
+                return 0;
+
+            var stratumType = GetStratumType(stratumId);
+
+            // 查找对应地层类型的挖掘力加成
+            var digEffect = dataset.dig_effect_info_array.FirstOrDefault(x => x.stratum_type == stratumType);
+            var baseDigPower = digEffect?.dig_effect_value ?? 0;
+
+            // 加上 link 加成
+            var linkBonus = GetLinkBonus(turn, stratumType);
+
+            return baseDigPower + linkBonus;
+        }
+
+        /// <summary>
+        /// 根据地层ID获取地层类型
+        /// </summary>
+        private static int GetStratumType(int stratumId)
+        {
+
+            // 砂质: stratum_id = 4, 7, 9, 13
+            // 土质: stratum_id = 5, 8, 11, 14
+            // 岩石: stratum_id = 6, 10, 12, 15
+            return stratumId switch
+            {
+                4 or 7 or 9 or 13 => 1,  // 砂质
+                5 or 8 or 11 or 14 => 2,  // 土质
+                6 or 10 or 12 or 15 => 3,  // 岩石
+                _ => 0
+            };
+        }
+
+        /// <summary>
+        /// 计算训练的挖掘量（包含 link 加成）
+        /// </summary>
+        private static int CalculateDigAmount(int supportCardCount, SingleModeOnsenDataSet dataset, TurnInfo turn)
+        {
+            // 基础值 = 25 + 支援卡人头数
+            var baseValue = 25 + supportCardCount;
+
+            // 找到正在挖掘的温泉
+            var currentOnsen = dataset?.onsen_info_array?.FirstOrDefault(x => x.state == 2);
+            if (currentOnsen == null || currentOnsen.stratum_info_array == null)
+                return 0;
+
+            // 找到第一个未完成的地层
+            var firstLayer = currentOnsen.stratum_info_array.FirstOrDefault(x => x.rest_volume > 0);
+            if (firstLayer == null)
+                return 0;
+
+            var digPower = GetDigPower(dataset, firstLayer.stratum_id, turn);
+
+            // 挖掘量 = floor(基础值 * ((100 + 挖掘力) / 100))
+            var digAmount = (int)Math.Floor(baseValue * ((100 + digPower) / 100.0));
+
+            // 如果会跨地层，需要计算第二层的挖掘量
+            if (digAmount > firstLayer.rest_volume && currentOnsen.stratum_info_array.Length > 1)
+            {
+                // 第一层所需基础值 = ceil(第一层剩余 / (100 + 第一层挖掘力) * 100)
+                var firstLayerNeededBase = (int)Math.Ceiling(firstLayer.rest_volume / ((100 + digPower) / 100.0));
+
+                // 第二层挖掘量 = floor((基础值 - 第一层所需基础值) * (100 + 第二层挖掘力) / 100)
+                var secondLayer = currentOnsen.stratum_info_array.Skip(1).FirstOrDefault(x => x.rest_volume > 0);
+                if (secondLayer != null)
+                {
+                    var secondDigPower = GetDigPower(dataset, secondLayer.stratum_id, turn);
+                    var secondLayerDig = (int)Math.Floor((baseValue - firstLayerNeededBase) * ((100 + secondDigPower) / 100.0));
+                    digAmount = firstLayer.rest_volume + secondLayerDig;
+                }
+            }
+
+            return digAmount;
+        }
+
         public static int GetCommandInfoStage_legend(SingleModeCheckEventResponse @event)
         {
             //if ((@event.data.unchecked_event_array != null && @event.data.unchecked_event_array.Length > 0)) return;
@@ -49,10 +217,11 @@ namespace OnsenScenarioAnalyzer
                         new Layout("体力").Ratio(6),
                         new Layout("干劲").Ratio(3)).Size(3),
                     new Layout("重要信息").Size(5),
-                    new Layout("剧本信息").SplitColumns(
-                        new Layout("评价会周期").Ratio(3),
-                        new Layout("岛训练数值").Ratio(3),
-                        new Layout("岛训练人数").Ratio(6)
+                    new Layout("温泉信息").SplitColumns(
+                        new Layout("温泉券").Ratio(1),
+                        new Layout("温泉buff").Ratio(1),
+                        new Layout("累计消耗体力").Ratio(1),
+                        new Layout("超回复").Ratio(1)
                         ).Size(3),
                     //new Layout("分割", new Rule()).Size(1),
                     new Layout("训练信息")  // size 20, 共约30行
@@ -90,7 +259,17 @@ namespace OnsenScenarioAnalyzer
                 GameStats.whichScenario = @event.data.chara_info.scenario_id;
                 GameStats.currentTurn = turn.Turn;
                 GameStats.stats[turn.Turn] = new TurnStats();
-                EventLogger.Update(@event);
+
+                // 安全调用 EventLogger.Update，避免空引用异常
+                try
+                {
+                    EventLogger.Update(@event);
+                }
+                catch (ArgumentNullException)
+                {
+                    // EventLogger 未正确初始化，忽略此错误
+                    // 这通常发生在从中通开始打开小黑板时 EventLoggerPlugin 里 lastProper 可能为 null
+                }
             }
             var trainItems = new Dictionary<int, SingleModeCommandInfo>
             {
@@ -256,6 +435,9 @@ namespace OnsenScenarioAnalyzer
                         _ => string.Empty
                     };
                 }
+
+                // 获取温泉挖掘信息
+                var (remainingLayers, totalLayers, currentRestVolume) = GetCurrentOnsenDigInfo(dataset);
                 var commands = turn.CommandInfoArray.Select(command =>
                 {
                     var table = new Table()
@@ -288,6 +470,21 @@ namespace OnsenScenarioAnalyzer
                         < 70 => $"{I18N_Vital}:[yellow]{afterVital}[/]/{turn.MaxVital}",
                         _ => $"{I18N_Vital}:[green]{afterVital}[/]/{turn.MaxVital}"
                     });
+
+                    // 显示温泉挖掘进度和挖掘量
+                    if (remainingLayers > 0)
+                    {
+                        // 计算支援卡人头数（排除理事长和记者）
+                        var supportCardCount = GetSupportCardCount(command);
+                        // 计算挖掘量（包含 link 加成）
+                        var digAmount = CalculateDigAmount(supportCardCount, dataset, turn);
+
+                        table.AddRow($"{I18N_OnsenDigging}: {remainingLayers}/{totalLayers}{I18N_OnsenLayer} | 挖掘:{digAmount}/{currentRestVolume}");
+                    }
+                    else
+                    {
+                        table.AddRow($"{I18N_OnsenDigging}: {I18N_OnsenCompleted}");
+                    }
 
                     turn.PointGainInfoDictionary.TryGetValue(command.CommandId, out var gain);
                     table.AddRow($"Lv{command.TrainLevel} | {gain}");
@@ -358,6 +555,46 @@ namespace OnsenScenarioAnalyzer
                 critInfos.Add("[aqua]非训练回合[/]");
             }
             layout["重要信息"].Update(new Panel(string.Join(Environment.NewLine, critInfos)).Expand());
+
+            // 温泉券信息
+            var ticketNum = dataset.bathing_info.ticket_num;
+            layout["温泉券"].Update(new Panel($"{I18N_OnsenTicket}: {ticketNum}/3").Expand());
+
+            // 温泉buff持续时间
+            var onsenBuffRemain = dataset.bathing_info.onsen_effect_remain_count;
+            layout["温泉buff"].Update(new Panel($"温泉Buff: {onsenBuffRemain}回合").Expand());
+
+            // 累计消耗体力统计
+            var currentVital = @event.data.chara_info.vital;
+            var currentTurn = turn.Turn;
+
+            // 第一回合初始化
+            if (currentTurn == 1)
+            {
+                _lastVital = currentVital;
+                _totalVitalConsumed = 0;
+            }
+            // 从第三回合开始统计
+            else if (currentTurn >= 3)
+            {
+                // 只统计减少的体力（每次体力减少时立即累加）
+                if (currentVital < _lastVital)
+                {
+                    _totalVitalConsumed += _lastVital - currentVital;
+                }
+            }
+            // 第二回合也需要更新 _lastVital，但不统计
+
+            // 每次都更新 _lastVital 为当前值
+            _lastVital = currentVital;
+
+            // 显示累计消耗体力
+            var vitalDisplay = currentTurn < 3 ? "❎" : _totalVitalConsumed.ToString();
+            layout["累计消耗体力"].Update(new Panel($"累计消耗体力: {vitalDisplay}").Expand());
+
+            // 超回复状态
+            var superiorState = dataset.bathing_info.superior_state;
+            layout["超回复"].Update(new Panel(superiorState == 1 ? $"[green]{I18N_CanSuperiorRecovery}[/]" : $"[grey]{I18N_CannotSuperiorRecovery}[/]").Expand());
 
             layout["Ext"].Update(exTable);
 

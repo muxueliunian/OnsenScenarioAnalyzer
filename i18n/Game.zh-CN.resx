@@ -231,4 +231,28 @@
   <data name="I18N_Yellow" xml:space="preserve">
     <value>黄</value>
   </data>
+  <data name="I18N_OnsenTicket" xml:space="preserve">
+    <value>温泉券</value>
+  </data>
+  <data name="I18N_SuperiorRecovery" xml:space="preserve">
+    <value>超回复</value>
+  </data>
+  <data name="I18N_CanSuperiorRecovery" xml:space="preserve">
+    <value>可超回复</value>
+  </data>
+  <data name="I18N_CannotSuperiorRecovery" xml:space="preserve">
+    <value>不可超回复</value>
+  </data>
+  <data name="I18N_OnsenDigging" xml:space="preserve">
+    <value>温泉</value>
+  </data>
+  <data name="I18N_OnsenCompleted" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="I18N_OnsenLayer" xml:space="preserve">
+    <value>层</value>
+  </data>
+  <data name="I18N_DigAmount" xml:space="preserve">
+    <value>挖掘</value>
+  </data>
 </root>

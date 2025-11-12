@@ -5,11 +5,21 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<RunPostBuildEvent>Always</RunPostBuildEvent>
+		<SatellitResourceLanguages>en;ja;zh-Hans</SatellitResourceLanguages>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\UmamusumeResponseAnalyzer\UmamusumeResponseAnalyzer\UmamusumeResponseAnalyzer.csproj" />
-		<ProjectReference Include="..\EventLoggerPlugin\EventLoggerPlugin.csproj" />
+		<ProjectReference Include="..\URAFORK\UmamusumeResponseAnalyzer\UmamusumeResponseAnalyzer\UmamusumeResponseAnalyzer.csproj">
+			<Private>false</Private>
+			<ExcludeAssets>runtime</ExcludeAssets>
+		</ProjectReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Reference Include="EventLoggerPlugin">
+			<HintPath>..\临时版\数据和插件\Plugins\EventLoggerPlugin\EventLoggerPlugin.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
 	</ItemGroup>
 
 	<ItemGroup>
@@ -34,7 +44,14 @@
 	</ItemGroup>
 
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-		<Exec Command="copy /Y &quot;$(TargetPath)&quot; &quot;%25localappdata%25/UmamusumeResponseAnalyzer/Plugins/OnsenScenarioAnalyzer/&quot;" />
+		<Exec Command="if not exist &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer&quot; mkdir &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer&quot;" />
+		<Exec Command="if not exist &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\en-US&quot; mkdir &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\en-US&quot;" />
+		<Exec Command="if not exist &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\ja-JP&quot; mkdir &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\ja-JP&quot;" />
+		<Exec Command="if not exist &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\zh-CN&quot; mkdir &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\zh-CN&quot;" />
+		<Exec Command="copy /Y &quot;$(TargetPath)&quot; &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\&quot;" />
+		<Exec Command="copy /Y &quot;$(TargetDir)en-US\OnsenScenarioAnalyzer.resources.dll&quot; &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\en-US\&quot;" />
+		<Exec Command="copy /Y &quot;$(TargetDir)ja-JP\OnsenScenarioAnalyzer.resources.dll&quot; &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\ja-JP\&quot;" />
+		<Exec Command="copy /Y &quot;$(TargetDir)zh-CN\OnsenScenarioAnalyzer.resources.dll&quot; &quot;%25localappdata%25\UmamusumeResponseAnalyzer\Plugins\OnsenScenarioAnalyzer\zh-CN\&quot;" />
 	</Target>
 
 </Project>
